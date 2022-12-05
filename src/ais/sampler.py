@@ -81,7 +81,7 @@ class UnadjustedLangevin:
         x_0 = self.pi_0.sample(key_0)
         init_val = (key_traj, x_0, 0.0)
         body_fn = lambda k, val: self._train_iter(k, val, model)
-        _, _, loss = jax.lax.fori_loop(1, self.n_timesteps, body_fn, init_val)
+        _, _, loss = jax.lax.fori_loop(1, self.n_timesteps + 1, body_fn, init_val)
         # _, _, loss = fori_loop(1, self.n_timesteps, body_fn, init_val)
         return loss
 
@@ -125,7 +125,7 @@ class UnadjustedLangevin:
         def body_fn(k: int, val: Tuple[Array, Array, Array]):
             return self._sample_iter(k, *val, get_B_km1)
 
-        _, x_K, log_w = jax.lax.fori_loop(1, self.n_timesteps, body_fn, init_val)
+        _, x_K, log_w = jax.lax.fori_loop(1, self.n_timesteps + 1, body_fn, init_val)
         log_w += self.get_log_gamma(x_K)
         return x_K, log_w
 

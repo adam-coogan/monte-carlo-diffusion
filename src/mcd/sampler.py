@@ -1,19 +1,11 @@
 from dataclasses import dataclass, field
-from typing import Callable, Tuple
+from typing import Callable, Tuple, Union
 
-from icecream import ic
 import jax
 import jax.numpy as jnp
 import numpyro.distributions as dist
-from jax.random import PRNGKey, split
+from jax.random import PRNGKey, PRNGKeyArray, split
 from jaxtyping import Array  # type: ignore
-
-
-def fori_loop(lower, upper, body_fun, init_val):
-    val = init_val
-    for i in range(lower, upper):
-        val = body_fun(i, val)
-    return val
 
 
 @dataclass
@@ -35,7 +27,7 @@ class UnadjustedLangevin:
     T: float = 1.0
     """Duration of diffusion process.
     """
-    delta: float = field(init=False)
+    delta: Array = field(init=False)
     """Timestep size.
     """
     shape: Tuple[int, ...] = field(init=False)
@@ -43,17 +35,25 @@ class UnadjustedLangevin:
     """
 
     def __post_init__(self):
-        self.delta = self.T / self.n_timesteps
+        self.delta = jnp.array(self.T / self.n_timesteps)
         self.shape = self.pi_0.sample(PRNGKey(0)).shape
 
-    def get_F_k(self, t, x_km1):
+    def get_F_k(self, t: Array, x_km1: Array) -> dist.Distribution:
+        """
+        Gets the forward Langevin kernel.
+        """
         score_pi = self.get_score_pi(t, x_km1)
         mean = x_km1 + self.delta * score_pi
         stdev = jnp.sqrt(2 * self.delta)
         return dist.Normal(mean, stdev).to_event(x_km1.ndim)
 
     # def _train_diffuse_iter(self, key, k, x_km1, model):
-    def _train_iter(self, k, val, model: Callable[[Array, Array], Array]):
+    def _train_iter(
+        self,
+        k: float,
+        val: Tuple[PRNGKeyArray, Array, Array],
+        model: Callable[[Array, Array], Array],
+    ) -> Tuple[PRNGKeyArray, Array, Array]:
         """
         Runs a single step of the training diffusion to get the contribution to
         the loss going from step k-1 to k.
@@ -73,7 +73,9 @@ class UnadjustedLangevin:
 
         return key, x_k, loss
 
-    def get_loss(self, model: Callable[[Array, Array], Array], key):
+    def get_loss(
+        self, model: Callable[[Array, Array], Array], key: PRNGKeyArray
+    ) -> Array:
         """
         Computes the loss for a single sample from the diffusion process.
         """
@@ -82,10 +84,16 @@ class UnadjustedLangevin:
         init_val = (key_traj, x_0, 0.0)
         body_fn = lambda k, val: self._train_iter(k, val, model)
         _, _, loss = jax.lax.fori_loop(1, self.n_timesteps + 1, body_fn, init_val)
-        # _, _, loss = fori_loop(1, self.n_timesteps, body_fn, init_val)
         return loss
 
-    def _sample_iter(self, k, key, x_km1, log_w, get_B_km1):
+    def _sample_iter(
+        self,
+        k: Array,
+        key: PRNGKeyArray,
+        x_km1: Array,
+        log_w: Array,
+        get_B_km1: Callable[[Array, Array], dist.Distribution],
+    ) -> Tuple[PRNGKeyArray, Array, Array]:
         """
         Runs a single iteration of sampling.
         """
@@ -102,10 +110,18 @@ class UnadjustedLangevin:
 
         return key, x_k, log_w
 
-    def get_B_km1_ais(self, t, x_k):
+    def get_B_km1_ais(self, t: Array, x_k: Array) -> dist.Distribution:
+        """
+        Gets the AIS backward proposal.
+        """
         return self.get_F_k(t, x_k)
 
-    def get_B_km1_mcd(self, t, x_k, model: Callable[[Array, Array], Array]):
+    def get_B_km1_mcd(
+        self, t: Array, x_k: Array, model: Callable[[Array, Array], Array]
+    ) -> dist.Distribution:
+        """
+        Gets the MCD backward kernel.
+        """
         score_pi = self.get_score_pi(t, x_k)
         s = model(t, x_k)
         mean = x_k - self.delta * score_pi + 2 * self.delta * s
@@ -113,43 +129,52 @@ class UnadjustedLangevin:
         return dist.Normal(mean, stdev).to_event(x_k.ndim)
 
     def _get_sample_helper(
-        self, key, get_B_km1: Callable[[Array, Array], dist.Distribution]
-    ):
+        self, key: PRNGKeyArray, get_B_km1: Callable[[Array, Array], dist.Distribution]
+    ) -> Tuple[Array, Array]:
         """
-        Helper to generate a sample with an arbitrary backwards kernel.
+        Helper to generate a sample and its weight with an arbitrary backwards kernel.
         """
         key_0, key_traj = split(key)
         x_0 = self.pi_0.sample(key_0)
         init_val = (key_traj, x_0, -self.pi_0.log_prob(x_0))
 
-        def body_fn(k: int, val: Tuple[Array, Array, Array]):
+        def body_fn(k: Array, val: Tuple[Array, Array, Array]):
             return self._sample_iter(k, *val, get_B_km1)
 
         _, x_K, log_w = jax.lax.fori_loop(1, self.n_timesteps + 1, body_fn, init_val)
         log_w += self.get_log_gamma(x_K)
         return x_K, log_w
 
-    def get_sample_ais(self, key):
+    def get_sample_ais(self, key: PRNGKeyArray) -> Tuple[Array, Array]:
         """
-        Generates a sample and its log importance weight with AIS.
+        Generates a sample and its log importance weight using AIS.
         """
         return self._get_sample_helper(key, self.get_B_km1_ais)
 
-    def get_sample_mcd(self, model, key):
+    def get_sample_mcd(
+        self, model: Callable[[Array, Array], Array], key: PRNGKeyArray
+    ) -> Tuple[Array, Array]:
         """
-        Generates a sample and its log importance weight with MCD.
+        Generates a sample and its log importance weight using MCD.
         """
         get_B_km1 = lambda t, x_k: self.get_B_km1_mcd(t, x_k, model)
         return self._get_sample_helper(key, get_B_km1)
 
-    def _get_trajectory_helper(self, key, get_B_km1) -> Tuple[Array, Array]:
+    def _get_trajectory_helper(
+        self, key: PRNGKeyArray, get_B_km1: Callable[[Array, Array], dist.Distribution]
+    ) -> Tuple[Array, Array]:
+        """
+        Helper to generate a trajectory and its weight with an arbitrary backwards kernel.
+        """
         key_0, key_traj = split(key)
         x_0 = self.pi_0.sample(key_0)
         log_w_0 = -self.pi_0.log_prob(x_0)
         init = (key_traj, x_0, log_w_0)
         ks = jnp.arange(1, self.n_timesteps, 1)
 
-        def f(carry: Tuple[Array, Array, Array], k: Array):
+        def f(
+            carry: Tuple[Array, Array, Array], k: Array
+        ) -> Tuple[Tuple[Array, Array, Array], Array]:
             carry = self._sample_iter(k, *carry, get_B_km1)
             x_k = carry[1]
             return carry, x_k
@@ -158,13 +183,15 @@ class UnadjustedLangevin:
         log_w += self.get_log_gamma(xs[-1])
         return xs, log_w
 
-    def get_trajectory_ais(self, key) -> Tuple[Array, Array]:
+    def get_trajectory_ais(self, key: PRNGKeyArray) -> Tuple[Array, Array]:
         """
         Generates a trajectory and its log importance weight with AIS.
         """
         return self._get_trajectory_helper(key, self.get_B_km1_ais)
 
-    def get_trajectory_mcd(self, model, key) -> Tuple[Array, Array]:
+    def get_trajectory_mcd(
+        self, model: Callable[[Array, Array], Array], key: PRNGKeyArray
+    ) -> Tuple[Array, Array]:
         """
         Generates a trajectory and its log importance weight with MCD.
         """

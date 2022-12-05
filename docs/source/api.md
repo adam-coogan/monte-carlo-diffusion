@@ -1,7 +1,7 @@
 # API
 
 ```{eval-rst}
-.. autoclass:: mcd.UnadjustedLangevin
+.. autoclass:: mcd.sampler.UnadjustedLangevin
    :members:
    :undoc-members:
    :show-inheritance:

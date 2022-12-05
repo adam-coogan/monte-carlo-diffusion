@@ -1,17 +1,18 @@
-# ais
+# mcd
 
-[![docs](https://readthedocs.org/projects/ais/badge/?version=latest)](http://ais.readthedocs.io/?badge=latest)
+[![docs](https://readthedocs.org/projects/mcd/badge/?version=latest)](http://mcd.readthedocs.io/?badge=latest)
 
-`ais` implements the algorithm from [Score-Based Diffusion meets Annealed Importance Sampling](https://arxiv.org/abs/2208.07698) in `jax`.
+`mcd` implements the Monte Carlo diffusion algorithm from [Score-Based Diffusion meets Annealed Importance Sampling](https://arxiv.org/abs/2208.07698) in `jax`. It also implements Neal's original
+version of [annealed importance sampling](https://arxiv.org/abs/physics/9803008).
 
-Check out the [docs](https://ais.readthedocs.io/en/latest/) badge
+Check out the [docs](https://mcd.readthedocs.io/en/latest/) badge
 above for more details, or try out the scripts applying the method to some low-dimensional
 problems (runnable on a laptop).
 
 ## Installation
 
 ```
-git clone git@github.com:adam-coogan/ais.git
-cd ais
+git clone git@github.com:adam-coogan/mcd.git
+cd mcd
 pip install .
 ```

@@ -1,8 +1,8 @@
 [project]
-name = "ais"
+name = "mcd"
 version = "0.0.1"
 authors = [{name = "Adam Coogan", email = "dr.adam.coogan@gmail.com"}]
-description = "Annealed importance sampling with score-based modeling in jax"
+description = "Monte Carlo diffusion and annealed importance sampling with jax"
 readme = "README.md"
 license = { file="LICENSE" }
 requires-python = ">=3.7"

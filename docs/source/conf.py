@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.abspath(os.path.join("..", "..", "src")))
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-project = "ais"
+project = "mcd"
 copyright = "2022, Adam Coogan"
 author = "Adam Coogan"
 release = "0.0.1"
@@ -32,7 +32,7 @@ def linkcode_resolve(domain, info):
     if not info["module"]:
         return None
     filename = info["module"].replace(".", "/")
-    return f"https://github.com/adam-coogan/ais/blob/main/src/{filename}.py"
+    return f"https://github.com/adam-coogan/monte-carlo-diffusion/blob/main/src/{filename}.py"
 
 
 extensions = [

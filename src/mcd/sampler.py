@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Callable, Tuple, Union
+from typing import Callable, Tuple
 
 import jax
 import jax.numpy as jnp
@@ -20,7 +20,7 @@ class UnadjustedLangevin:
     get_log_gamma: Callable[[Array], Array]
     """Gets the target log probability (potentially unnormalized).
     """
-    get_score_pi: Callable[[Array, Array], Array]
+    get_score_gamma_t: Callable[[Array, Array], Array]
     """Gets :math:`\nabla \log \pi(t, x)`.
     """
     n_timesteps: int
@@ -42,12 +42,11 @@ class UnadjustedLangevin:
         """
         Gets the forward Langevin kernel.
         """
-        score_pi = self.get_score_pi(t, x_km1)
+        score_pi = self.get_score_gamma_t(t, x_km1)
         mean = x_km1 + self.delta * score_pi
         stdev = jnp.sqrt(2 * self.delta)
         return dist.Normal(mean, stdev).to_event(x_km1.ndim)
 
-    # def _train_diffuse_iter(self, key, k, x_km1, model):
     def _train_iter(
         self,
         k: float,
@@ -122,7 +121,7 @@ class UnadjustedLangevin:
         """
         Gets the MCD backward kernel.
         """
-        score_pi = self.get_score_pi(t, x_k)
+        score_pi = self.get_score_gamma_t(t, x_k)
         s = model(t, x_k)
         mean = x_k - self.delta * score_pi + 2 * self.delta * s
         stdev = jnp.sqrt(2 * self.delta)

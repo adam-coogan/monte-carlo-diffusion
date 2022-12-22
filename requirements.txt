@@ -1,5 +1,4 @@
 chex
-diffrax
 equinox
 furo
 jax
